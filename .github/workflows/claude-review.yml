@@ -113,7 +113,7 @@ jobs:
           # branch instead of just the latest commit.
           fetch-depth: 0
 
-      - name: Write MCP config
+      - name: Build MCP config arg
         id: mcp
         env:
           MCP_CONFIG: ${{ inputs.mcp_config }}
@@ -122,9 +122,12 @@ jobs:
             echo "args=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          printf '%s' "$MCP_CONFIG" > "$RUNNER_TEMP/mcp-config.json"
-          jq -e .mcpServers "$RUNNER_TEMP/mcp-config.json" > /dev/null
-          echo "args=--mcp-config $RUNNER_TEMP/mcp-config.json" >> "$GITHUB_OUTPUT"
+          # Inline, not a file: in tag mode the action merges only inline JSON
+          # into its own --mcp-config and drops a file path. Single quotes keep
+          # ${VAR} literal through the action's shell-quote parsing.
+          config=$(printf '%s' "$MCP_CONFIG" | jq -ce 'select(.mcpServers)')
+          case "$config" in *"'"*) echo "::error::mcp_config must not contain single quotes"; exit 1 ;; esac
+          echo "args=--mcp-config '$config'" >> "$GITHUB_OUTPUT"
 
       - name: Build tool allowlist
         id: tools
