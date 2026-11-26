@@ -32,6 +32,8 @@ on:
           Post a `review` commit status on the PR head, for repositories whose
           branch protection requires it. issue_comment runs attach their check
           run to the default-branch tip, which does not satisfy branch protection.
+          PRs skipped for an unlisted bot author or the `skip-claude-review`
+          label get a `success` status, so they are not blocked.
         type: boolean
         default: false
       allowed_bots:
@@ -103,6 +105,27 @@ jobs:
             allowed=false
           fi
           echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+
+  skipped-status:
+    needs: authorize
+    if: >-
+      always() && inputs.post_review_status &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      needs.authorize.result == 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api "repos/$REPO/statuses/$HEAD_SHA" -X POST \
+            -f context='review' -f state=success \
+            -f description="Claude review skipped (bot or skip-claude-review label)" -f target_url="$RUN_URL"
 
   review:
     needs: authorize
