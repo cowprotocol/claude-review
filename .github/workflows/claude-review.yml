@@ -34,6 +34,13 @@ on:
           run to the default-branch tip, which does not satisfy branch protection.
         type: boolean
         default: false
+      allowed_bots:
+        description: >-
+          Comma-separated bot logins whose PRs are reviewed, e.g.
+          `cow-github-bot[bot]`. List only bots whose PR content you control:
+          the review has the tools in `extra_allowed_tools`.
+        type: string
+        default: ""
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
@@ -49,14 +56,17 @@ permissions: {}
 jobs:
   authorize:
     # Payload-only pre-filter: no API call for bots, drafts or the skip label.
-    # Bots are excluded here, not by the permission check, so they stay skipped
-    # even if a bot account is ever granted write access. `github.event` is the
-    # calling workflow's event.
+    # Bots are excluded here, not by the permission check, so only bots listed
+    # in `allowed_bots` get through, even if another bot is ever granted write
+    # access. `github.event` is the calling workflow's event.
     if: >
       (
         github.event_name == 'pull_request' &&
         github.event.pull_request.draft == false &&
-        github.event.pull_request.user.type != 'Bot' &&
+        (
+          github.event.pull_request.user.type != 'Bot' ||
+          contains(format(',{0},', inputs.allowed_bots), format(',{0},', github.event.pull_request.user.login))
+        ) &&
         !contains(github.event.pull_request.labels.*.name, 'skip-claude-review')
       ) || (
         github.event_name == 'issue_comment' &&
@@ -78,8 +88,11 @@ jobs:
           # On a pull_request event there is no commenter, so the author stands in:
           # an empty login would query collaborators//permission, 404 and block the run.
           ACTOR: ${{ github.event.comment.user.login || github.event.pull_request.user.login }}
+          ALLOWED_BOTS: ${{ inputs.allowed_bots }}
         run: |
           has_push() {
+            # App bots have no collaborator permission, so the API answers false.
+            case ",$ALLOWED_BOTS," in *",$1,"*) echo true; return ;; esac
             gh api "repos/$REPO/collaborators/$1/permission" \
               --jq '.user.permissions.push' 2>/dev/null || echo false
           }
@@ -150,6 +163,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           trigger_phrase: "@claude"
           track_progress: true
+          allowed_bots: ${{ inputs.allowed_bots }}
           claude_args: |
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max_turns }}
@@ -185,7 +199,7 @@ jobs:
           - **Re-run it:** comment \`@claude\` on this PR (requires write access; bots and drafts are skipped).
           - **Skip it:** add the \`skip-claude-review\` label.
 
-          **Won't run when:** the PR is a draft, the author is a bot or lacks write access, or the \`skip-claude-review\` label is set."
+          **Won't run when:** the PR is a draft, the author is an unlisted bot or lacks write access, or the \`skip-claude-review\` label is set."
 
       - name: Report cost
         if: always()

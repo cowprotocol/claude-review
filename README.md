@@ -25,7 +25,8 @@ What the review checks in a repository belongs in that repository's
 `.claude/skills/pr-review/SKILL.md`; the shared prompt tells Claude to follow it.
 
 Inputs: `runner`, `model`, `max_turns`, `extra_allowed_tools`, `mcp_config`
-(JSON, `${VAR}` placeholders), `post_review_status`. Secrets:
+(JSON, `${VAR}` placeholders), `post_review_status`, `allowed_bots` (bot
+logins whose PRs are reviewed; never `*`). Secrets:
 `CLAUDE_CODE_OAUTH_TOKEN` (required), `MCP_CI_BEARER_STAGING`,
 `MCP_CI_BEARER_PROD`, `LINEAR_API_KEY`.
 
